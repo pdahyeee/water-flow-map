@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>마을 유량계 관리 시스템</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0f1e;
+    --panel: #111827;
+    --panel2: #1a2235;
+    --border: #1e3a5f;
+    --accent: #00c8ff;
+    --accent2: #0077ff;
+    --water: #00a8ff;
+    --danger: #ff4466;
+    --success: #00e5a0;
+    --text: #e2eaf5;
+    --muted: #6b8aaa;
+    --pipe: #00c8ff;
+    --zone: rgba(0,200,255,0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--success);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 280px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* MODE BUTTONS */
+  .mode-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--muted);
+    font-size: 13px;
+    font-family: 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+
+  .mode-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .mode-btn.active {
+    background: rgba(0,200,255,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .mode-btn .icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+  }
+
+  /* METER LIST */
+  .meter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .meter-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .meter-item:hover, .meter-item.selected {
+    border-color: var(--accent);
+    background: rgba(0,200,255,0.08);
+  }
+
+  .meter-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .meter-item-info {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .meter-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .badge-active {
+    background: rgba(0,229,160,0.15);
+    color: var(--success);
+  }
+
+  .badge-drawing {
+    background: rgba(0,200,255,0.15);
+    color: var(--accent);
+  }
+
+  /* INFO PANEL */
+  .info-panel {
+    background: rgba(0,200,255,0.06);
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+
+  .info-panel strong {
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+
+  /* ACTION BUTTONS */
+  .action-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-family: 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    margin-bottom: 6px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    color: #fff;
+  }
+
+  .btn-primary:hover {
+    opacity: 0.85;
+    transform: translateY(-1px);
+  }
+
+  .btn-danger {
+    background: rgba(255,68,102,0.12);
+    border: 1px solid rgba(255,68,102,0.3);
+    color: var(--danger);
+  }
+
+  .btn-danger:hover {
+    background: rgba(255,68,102,0.2);
+  }
+
+  .btn-secondary {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  /* MAP */
+  #map {
+    flex: 1;
+    position: relative;
+  }
+
+  /* MAP OVERLAY - mode indicator */
+  .map-overlay {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 24px;
+    padding: 8px 20px;
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 500;
+    pointer-events: none;
+    display: none;
+    white-space: nowrap;
+    box-shadow: 0 0 20px rgba(0,200,255,0.2);
+    animation: fadeInDown 0.3s ease;
+  }
+
+  .map-overlay.visible {
+    display: block;
+  }
+
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  /* COORDINATE COUNTER */
+  .coord-counter {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 16px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    display: none;
+  }
+
+  .coord-counter.visible {
+    display: block;
+  }
+
+  /* LEGEND */
+  .legend {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    z-index: 999;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 11px;
+  }
+
+  .legend-title {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: var(--muted);
+  }
+
+  .legend-line {
+    width: 24px; height: 3px;
+    border-radius: 2px;
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+
+  /* Scrollbar */
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Leaflet dark override */
+  .leaflet-container {
+    background: #0a1628 !important;
+  }
+
+  .leaflet-tile {
+    filter: brightness(0.6) saturate(0.5) hue-rotate(180deg) invert(1) brightness(0.7) !important;
+  }
+
+  /* Custom popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+    color: var(--text) !important;
+  }
+
+  .leaflet-popup-tip {
+    background: var(--panel) !important;
+  }
+
+  .popup-title {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--accent);
+  }
+
+  .popup-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .popup-row span:last-child {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .popup-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 7px;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-weight: 500;
+  }
+
+  .pipe-count {
+    font-size: 11px;
+    color: var(--success);
+    margin-top: 4px;
+  }
+
+  /* No meters placeholder */
+  .empty-hint {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    padding: 16px 8px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">💧</div>
+    마을 유량계 관리 시스템
+  </div>
+  <div class="header-status">
+    <div class="status-dot"></div>
+    실시간 모니터링
+  </div>
+</header>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- 모드 선택 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">모드 선택</div>
+      <div class="mode-group">
+        <button class="mode-btn active" id="btn-view" onclick="setMode('view')">
+          <span class="icon">👁️</span> 보기 모드
+        </button>
+        <button class="mode-btn" id="btn-add-meter" onclick="setMode('add-meter')">
+          <span class="icon">📍</span> 유량계 추가
+        </button>
+        <button class="mode-btn" id="btn-draw-pipe" onclick="setMode('draw-pipe')" id="btn-draw">
+          <span class="icon">✏️</span> 배관 그리기
+        </button>
+      </div>
+    </div>
+
+    <!-- 안내 -->
+    <div class="sidebar-section" id="guide-section">
+      <div class="sidebar-title">사용 안내</div>
+      <div class="info-panel" id="guide-text">
+        <strong>👁️ 보기 모드</strong>
+        유량계 마커를 클릭하면 해당 유량계의 공급 배관이 지도에 표시됩니다.
+      </div>
+    </div>
+
+    <!-- 배관 그리기 액션 -->
+    <div class="sidebar-section" id="pipe-actions" style="display:none;">
+      <div class="sidebar-title">배관 그리기</div>
+      <div class="info-panel" style="margin-bottom:10px;">
+        <strong id="drawing-for">유량계 선택 필요</strong>
+        <span id="drawing-hint">먼저 아래 목록에서 유량계를 선택하세요.</span>
+      </div>
+      <button class="action-btn btn-primary" onclick="finishPipe()">✅ 배관 저장</button>
+      <button class="action-btn btn-danger" onclick="cancelPipe()">❌ 취소</button>
+    </div>
+
+    <!-- 유량계 목록 -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">유량계 목록 (<span id="meter-count">0</span>)</div>
+      <div class="meter-list" id="meter-list">
+        <div class="empty-hint">📍 유량계 추가 모드에서<br>지도를 클릭해 추가하세요.</div>
+      </div>
+    </div>
+
+    <!-- 전체 초기화 -->
+    <div class="sidebar-section">
+      <button class="action-btn btn-danger" onclick="clearAll()">🗑️ 전체 초기화</button>
+      <button class="action-btn btn-secondary" onclick="exportData()">💾 데이터 내보내기</button>
+    </div>
+
+  </div>
+
+  <!-- MAP -->
+  <div style="position:relative; flex:1;">
+    <div id="map"></div>
+    <div class="map-overlay" id="mode-overlay">📍 지도를 클릭해 유량계를 추가하세요</div>
+    <div class="coord-counter" id="coord-counter">포인트: 0개 찍힘</div>
+
+    <!-- LEGEND -->
+    <div class="legend">
+      <div class="legend-title">범례</div>
+      <div class="legend-item">
+        <div class="legend-dot" style="border-color:#00c8ff; background:rgba(0,200,255,0.3);"></div>
+        <span>유량계</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-line" style="background:#00c8ff;"></div>
+        <span>공급 배관</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-line" style="background:rgba(0,200,255,0.4); height:8px; border-radius:4px;"></div>
+        <span>공급 구역</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================
+// 데이터 저장소
+// =====================
+let meters = JSON.parse(localStorage.getItem('wm_meters') || '[]');
+let pipes  = JSON.parse(localStorage.getItem('wm_pipes')  || '{}');
+
+// =====================
+// 상태
+// =====================
+let mode = 'view';
+let currentMeter = null;
+let drawingPoints = [];
+let drawingPolyline = null;
+let tempMarkers = [];
+
+let markerMap   = {};  // meterId -> leaflet marker
+let pipeLayerMap= {};  // meterId -> [polyline, polygon]
+let activeHighlight = null;
+
+// =====================
+// 지도 초기화 (대한민국 중심)
+// =====================
+const map = L.map('map', { zoomControl: true }).setView([36.5, 127.8], 8);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 19
+}).addTo(map);
+
+// 지도 클릭
+map.on('click', onMapClick);
+
+// =====================
+// 커스텀 마커 아이콘
+// =====================
+function makeMeterIcon(selected=false) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:32px; height:32px;
+      background:${selected ? '#00c8ff' : 'rgba(0,200,255,0.2)'};
+      border: 2px solid #00c8ff;
+      border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size:14px;
+      box-shadow: 0 0 ${selected?'16px':'8px'} rgba(0,200,255,${selected?'0.8':'0.4'});
+      transition: all 0.2s;
+    ">💧</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -18]
+  });
+}
+
+function makeTempIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:12px; height:12px;
+      background:#00c8ff;
+      border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 0 8px rgba(0,200,255,0.8);
+    "></div>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6]
+  });
+}
+
+// =====================
+// 모드 설정
+// =====================
+function setMode(m) {
+  // 배관 그리기 중 다른 모드 전환 시 취소
+  if (mode === 'draw-pipe' && m !== 'draw-pipe') {
+    cancelPipe();
+  }
+
+  mode = m;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + (m === 'draw-pipe' ? 'draw-pipe' : m === 'add-meter' ? 'add-meter' : 'view')).classList.add('active');
+
+  const overlay = document.getElementById('mode-overlay');
+  const pipeAct = document.getElementById('pipe-actions');
+  const guideSec = document.getElementById('guide-section');
+  const coordCnt = document.getElementById('coord-counter');
+
+  if (m === 'add-meter') {
+    overlay.textContent = '📍 지도를 클릭해 유량계를 추가하세요';
+    overlay.classList.add('visible');
+    pipeAct.style.display = 'none';
+    guideSec.style.display = 'none';
+    coordCnt.classList.remove('visible');
+    document.getElementById('guide-text').innerHTML = '<strong>📍 유량계 추가 모드</strong>지도의 원하는 위치를 클릭하면 유량계가 추가됩니다.';
+    hideAllPipes();
+  } else if (m === 'draw-pipe') {
+    overlay.textContent = '✏️ 목록에서 유량계를 선택 후, 지도를 탭탭탭 클릭하세요';
+    overlay.classList.add('visible');
+    pipeAct.style.display = 'block';
+    guideSec.style.display = 'none';
+    coordCnt.classList.add('visible');
+    hideAllPipes();
+  } else {
+    overlay.classList.remove('visible');
+    pipeAct.style.display = 'none';
+    guideSec.style.display = 'block';
+    coordCnt.classList.remove('visible');
+    document.getElementById('guide-text').innerHTML = '<strong>👁️ 보기 모드</strong>유량계 마커를 클릭하면 해당 공급 배관이 지도에 강조 표시됩니다.';
+    hideAllPipes();
+  }
+
+  updateMeterList();
+}
+
+// =====================
+// 지도 클릭 핸들러
+// =====================
+function onMapClick(e) {
+  if (mode === 'add-meter') {
+    addMeter(e.latlng);
+  } else if (mode === 'draw-pipe' && currentMeter !== null) {
+    addPipePoint(e.latlng);
+  }
+}
+
+// =====================
+// 유량계 추가
+// =====================
+function addMeter(latlng) {
+  const id = Date.now().toString();
+  const name = `유량계 ${meters.length + 1}호`;
+  const meter = { id, name, lat: latlng.lat, lng: latlng.lng };
+  meters.push(meter);
+  saveData();
+  addMeterMarker(meter);
+  updateMeterList();
+}
+
+function addMeterMarker(meter) {
+  const marker = L.marker([meter.lat, meter.lng], { icon: makeMeterIcon() }).addTo(map);
+
+  marker.bindPopup(() => {
+    const pipeData = pipes[meter.id] || [];
+    const div = document.createElement('div');
+    div.innerHTML = `
+      <div class="popup-title">💧 ${meter.name}</div>
+      <div class="popup-row"><span>위치</span><span>${meter.lat.toFixed(5)}, ${meter.lng.toFixed(5)}</span></div>
+      <div class="popup-row"><span>배관 경로</span><span>${pipeData.length}개 포인트</span></div>
+      <div class="pipe-count">${pipeData.length > 0 ? '✅ 배관 등록됨' : '⚠️ 배관 미등록'}</div>
+      <button class="popup-btn" onclick="showMeterPipe('${meter.id}')">공급 배관 보기</button>
+    `;
+    return div;
+  });
+
+  marker.on('click', () => {
+    if (mode === 'view') {
+      showMeterPipe(meter.id);
+    } else if (mode === 'draw-pipe') {
+      selectMeterForDrawing(meter.id);
+    }
+  });
+
+  markerMap[meter.id] = marker;
+}
+
+// =====================
+// 배관 그리기
+// =====================
+function selectMeterForDrawing(meterId) {
+  currentMeter = meterId;
+  drawingPoints = [];
+  clearTempDrawing();
+
+  const meter = meters.find(m => m.id === meterId);
+  document.getElementById('drawing-for').textContent = `✏️ ${meter.name}`;
+  document.getElementById('drawing-hint').textContent = '지도를 클릭해 배관 경로를 그리세요. 저장 버튼으로 완료.';
+
+  // 기존 데이터 있으면 불러오기
+  if (pipes[meterId]) {
+    drawingPoints = pipes[meterId].map(p => [p.lat, p.lng]);
+    redrawTempLine();
+    updateCoordCounter();
+  }
+
+  // 마커 focus
+  Object.keys(markerMap).forEach(id => {
+    markerMap[id].setIcon(makeMeterIcon(id === meterId));
+  });
+
+  updateMeterList();
+}
+
+function addPipePoint(latlng) {
+  if (!currentMeter) return;
+  drawingPoints.push([latlng.lat, latlng.lng]);
+  redrawTempLine();
+  updateCoordCounter();
+
+  const m = L.marker([latlng.lat, latlng.lng], { icon: makeTempIcon() }).addTo(map);
+  tempMarkers.push(m);
+}
+
+function redrawTempLine() {
+  if (drawingPolyline) map.removeLayer(drawingPolyline);
+  if (drawingPoints.length > 1) {
+    drawingPolyline = L.polyline(drawingPoints, {
+      color: '#00c8ff',
+      weight: 3,
+      opacity: 0.8,
+      dashArray: '8,4'
+    }).addTo(map);
+  }
+}
+
+function finishPipe() {
+  if (!currentMeter) { alert('먼저 유량계를 선택하세요.'); return; }
+  if (drawingPoints.length < 2) { alert('최소 2개 이상의 포인트를 찍어주세요.'); return; }
+
+  pipes[currentMeter] = drawingPoints.map(p => ({ lat: p[0], lng: p[1] }));
+  saveData();
+
+  clearTempDrawing();
+  currentMeter = null;
+  updateCoordCounter();
+  updateMeterList();
+
+  Object.keys(markerMap).forEach(id => {
+    markerMap[id].setIcon(makeMeterIcon(false));
+  });
+
+  document.getElementById('drawing-for').textContent = '유량계 선택 필요';
+  document.getElementById('drawing-hint').textContent = '먼저 아래 목록에서 유량계를 선택하세요.';
+
+  alert('✅ 배관이 저장되었습니다!');
+}
+
+function cancelPipe() {
+  clearTempDrawing();
+  currentMeter = null;
+  drawingPoints = [];
+  Object.keys(markerMap).forEach(id => markerMap[id].setIcon(makeMeterIcon(false)));
+  document.getElementById('drawing-for').textContent = '유량계 선택 필요';
+  document.getElementById('drawing-hint').textContent = '먼저 아래 목록에서 유량계를 선택하세요.';
+  updateCoordCounter();
+}
+
+function clearTempDrawing() {
+  if (drawingPolyline) { map.removeLayer(drawingPolyline); drawingPolyline = null; }
+  tempMarkers.forEach(m => map.removeLayer(m));
+  tempMarkers = [];
+}
+
+function updateCoordCounter() {
+  const el = document.getElementById('coord-counter');
+  el.textContent = `포인트: ${drawingPoints.length}개 찍힘`;
+}
+
+// =====================
+// 배관 표시 (보기 모드)
+// =====================
+function showMeterPipe(meterId) {
+  hideAllPipes();
+
+  const pipeData = pipes[meterId];
+  if (!pipeData || pipeData.length < 2) {
+    alert('⚠️ 이 유량계에 등록된 배관이 없습니다.\n배관 그리기 모드에서 배관을 추가하세요.');
+    return;
+  }
+
+  const coords = pipeData.map(p => [p.lat, p.lng]);
+  const meter = meters.find(m => m.id === meterId);
+
+  // 배관 선
+  const polyline = L.polyline(coords, {
+    color: '#00c8ff',
+    weight: 4,
+    opacity: 0.95,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+
+  // 공급 구역 (폴리곤 - 닫힌 영역이면)
+  let polygon = null;
+  if (coords.length >= 3) {
+    polygon = L.polygon(coords, {
+      color: '#00c8ff',
+      weight: 1,
+      fillColor: '#00c8ff',
+      fillOpacity: 0.08
+    }).addTo(map);
+  }
+
+  // 마커 강조
+  Object.keys(markerMap).forEach(id => {
+    markerMap[id].setIcon(makeMeterIcon(id === meterId));
+  });
+
+  // 팝업 열기
+  markerMap[meterId].openPopup();
+
+  // 전체 배관이 보이게 줌
+  map.fitBounds(polyline.getBounds(), { padding: [60, 60] });
+
+  activeHighlight = { meterId, polyline, polygon };
+}
+
+function hideAllPipes() {
+  if (activeHighlight) {
+    if (activeHighlight.polyline) map.removeLayer(activeHighlight.polyline);
+    if (activeHighlight.polygon) map.removeLayer(activeHighlight.polygon);
+    activeHighlight = null;
+  }
+  Object.keys(markerMap).forEach(id => markerMap[id].setIcon(makeMeterIcon(false)));
+}
+
+// =====================
+// 목록 렌더링
+// =====================
+function updateMeterList() {
+  const list = document.getElementById('meter-list');
+  document.getElementById('meter-count').textContent = meters.length;
+
+  if (meters.length === 0) {
+    list.innerHTML = '<div class="empty-hint">📍 유량계 추가 모드에서<br>지도를 클릭해 추가하세요.</div>';
+    return;
+  }
+
+  list.innerHTML = meters.map(m => {
+    const hasPipe = pipes[m.id] && pipes[m.id].length > 0;
+    const isSelected = currentMeter === m.id;
+    return `
+      <div class="meter-item ${isSelected ? 'selected' : ''}" onclick="onMeterItemClick('${m.id}')">
+        <div class="meter-item-name">
+          💧 ${m.name}
+          <span class="meter-badge ${hasPipe ? 'badge-active' : 'badge-drawing'}">${hasPipe ? '배관등록' : '미등록'}</span>
+        </div>
+        <div class="meter-item-info">
+          <span>${m.lat.toFixed(4)}, ${m.lng.toFixed(4)}</span>
+          ${hasPipe ? `<span style="color:var(--success)">● ${pipes[m.id].length}pt</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function onMeterItemClick(meterId) {
+  if (mode === 'view') {
+    showMeterPipe(meterId);
+    const m = meters.find(x => x.id === meterId);
+    map.setView([m.lat, m.lng], 14);
+  } else if (mode === 'draw-pipe') {
+    selectMeterForDrawing(meterId);
+  } else {
+    const m = meters.find(x => x.id === meterId);
+    map.setView([m.lat, m.lng], 14);
+  }
+}
+
+// =====================
+// 데이터 저장/불러오기
+// =====================
+function saveData() {
+  localStorage.setItem('wm_meters', JSON.stringify(meters));
+  localStorage.setItem('wm_pipes', JSON.stringify(pipes));
+}
+
+function clearAll() {
+  if (!confirm('모든 유량계와 배관 데이터를 삭제할까요?')) return;
+  meters = []; pipes = {};
+  localStorage.removeItem('wm_meters');
+  localStorage.removeItem('wm_pipes');
+  Object.values(markerMap).forEach(m => map.removeLayer(m));
+  markerMap = {};
+  hideAllPipes();
+  clearTempDrawing();
+  currentMeter = null;
+  updateMeterList();
+}
+
+function exportData() {
+  const data = JSON.stringify({ meters, pipes }, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'waterflow_data.json';
+  a.click();
+}
+
+// =====================
+// 초기 로드
+// =====================
+meters.forEach(m => addMeterMarker(m));
+updateMeterList();
+setMode('view');
+</script>
+</body>
+</html>
